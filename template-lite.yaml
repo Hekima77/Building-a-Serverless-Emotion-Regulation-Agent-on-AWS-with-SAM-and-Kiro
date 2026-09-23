@@ -1,0 +1,118 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: 'Lightweight Emotion Regulation Agent - Minimal Prototype'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment environment
+
+Globals:
+  Function:
+    Timeout: 60
+    Runtime: nodejs18.x
+    MemorySize: 256
+    Environment:
+      Variables:
+        AWS_REGION: !Ref AWS::Region
+        DYNAMODB_TABLE_NAME: !Ref EmotionLogsTable
+
+Resources:
+  # DynamoDB Table for logging interactions
+  EmotionLogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'emotion-logs-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: ttl
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # API Gateway REST API
+  EmotionAgentAPI:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub 'emotion-agent-api-${Environment}'
+      StageName: !Ref Environment
+      TracingEnabled: true
+
+  # Lambda function for emotion analysis
+  EmotionAgentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'emotion-agent-${Environment}'
+      CodeUri: ./dist
+      Handler: lambda/emotion-handler.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EmotionLogsTable
+      Events:
+        AnalyzeEmotion:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EmotionAgentAPI
+            Path: /emotion
+            Method: post
+
+  # Lambda function for retrieving user history
+  HistoryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'emotion-history-${Environment}'
+      CodeUri: ./dist
+      Handler: lambda/emotion-handler.historyHandler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref EmotionLogsTable
+      Events:
+        GetHistory:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EmotionAgentAPI
+            Path: /history/{userId}
+            Method: get
+
+  # CloudWatch Log Group for Lambda
+  EmotionAgentLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/emotion-agent-${Environment}'
+      RetentionInDays: 7
+
+Outputs:
+  EmotionAgentAPI:
+    Description: Emotion Agent API endpoint
+    Value: !Sub 'https://${EmotionAgentAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+    Export:
+      Name: !Sub 'EmotionAgentAPI-${Environment}'
+
+  EmotionAgentFunction:
+    Description: Emotion Agent Lambda function name
+    Value: !Ref EmotionAgentFunction
+    Export:
+      Name: !Sub 'EmotionAgentFunction-${Environment}'
+
+  DynamoDBTable:
+    Description: DynamoDB table for interaction logs
+    Value: !Ref EmotionLogsTable
+    Export:
+      Name: !Sub 'EmotionLogsTable-${Environment}'

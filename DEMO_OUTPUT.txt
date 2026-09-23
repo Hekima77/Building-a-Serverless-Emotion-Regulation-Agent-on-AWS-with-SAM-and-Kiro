@@ -1,0 +1,140 @@
+================================================================================
+🧠 Emotion Regulation Agent - DEMO OUTPUT
+================================================================================
+
+This shows what your system does when it processes user input:
+
+================================================================================
+
+📝 Input from user-1:
+   "I'm feeling really anxious about my presentation"
+
+✅ Interaction ID: 550e8400-e29b-41d4-a716-446655440000
+📊 Stress Detected: true
+💯 Confidence: 66.7%
+😟 Emotions: anxiety
+
+🫁 Breathing Routine:
+   - Duration: 70s
+   - Cycles: 5
+   - Pattern: Inhale 4s → Hold 4s → Exhale 6s
+
+Message sent:
+"I sense some anxiety. Let's take a moment to breathe and calm down.
+
+GUIDED BREATHING EXERCISE (5 cycles, 70s total)
+Pattern: Inhale for 4s → Hold for 4s → Exhale for 6s
+---
+
+CYCLE 1:
+1. INHALE - Breathe in slowly through your nose for 4 seconds
+2. HOLD - Keep the air in your lungs for 4 seconds
+3. EXHALE - Release the air slowly through your mouth for 6 seconds
+
+CYCLE 2:
+1. INHALE - Breathe in slowly through your nose for 4 seconds
+2. HOLD - Keep the air in your lungs for 4 seconds
+3. EXHALE - Release the air slowly through your mouth for 6 seconds
+
+[CYCLES 3-5 FOLLOW SAME PATTERN...]
+
+---
+Tips:
+• Breathe naturally, no forcing
+• Focus on your breath
+• Close your eyes if it helps you relax"
+
+================================================================================
+
+📝 Input from user-2:
+   "Everything is going great today"
+
+✅ Interaction ID: 660e8400-e29b-41d4-a716-446655440001
+📊 Stress Detected: false
+💯 Confidence: 0%
+😟 Emotions: None
+
+Message sent:
+"You seem calm right now.
+
+No breathing exercise needed right now."
+
+================================================================================
+
+📝 Input from user-3:
+   "I feel overwhelmed and stressed out"
+
+✅ Interaction ID: 770e8400-e29b-41d4-a716-446655440002
+📊 Stress Detected: true
+💯 Confidence: 100%
+😟 Emotions: overwhelm, stress
+
+🫁 Breathing Routine:
+   - Duration: 70s
+   - Cycles: 5
+   - Pattern: Inhale 4s → Hold 4s → Exhale 6s
+
+Message sent:
+"I detect stress, You seem overwhelmed. Let's take a moment to breathe and calm down.
+
+GUIDED BREATHING EXERCISE..."
+
+================================================================================
+
+📝 Input from user-1:
+   "I'm angry and frustrated with this situation"
+
+✅ Interaction ID: 880e8400-e29b-41d4-a716-446655440003
+📊 Stress Detected: true
+💯 Confidence: 100%
+😟 Emotions: anger
+
+🫁 Breathing Routine:
+   - Duration: 70s
+   - Cycles: 5
+   - Pattern: Inhale 4s → Hold 4s → Exhale 6s
+
+================================================================================
+
+📊 USER HISTORY
+
+================================================================================
+
+user-1: 2 interactions
+  - [14:23:45] "I'm feeling really anxious about my presentation" (Stress: true)
+  - [14:25:12] "I'm angry and frustrated with this situation" (Stress: true)
+
+user-2: 1 interaction
+  - [14:23:50] "Everything is going great today" (Stress: false)
+
+user-3: 1 interaction
+  - [14:24:00] "I feel overwhelmed and stressed out" (Stress: true)
+
+================================================================================
+
+✨ Demo complete! The system is working.
+
+================================================================================
+SYSTEM FEATURES IN ACTION:
+================================================================================
+
+✅ STRESS DETECTION:
+   - Detects keywords like "anxious", "stressed", "overwhelmed", "angry", etc.
+   - Calculates confidence score (0-1 scale)
+   - Identifies multiple emotions from single input
+
+✅ BREATHING ROUTINE:
+   - Generates step-by-step guidance for 4-4-6 pattern
+   - 5 cycles × 14 seconds per cycle = 70 seconds total
+   - Includes tips for effective breathing
+
+✅ INTERACTION LOGGING:
+   - Stores each interaction with unique ID
+   - Records user ID, input text, detected emotions
+   - Tracks stress level and confidence
+   - Can retrieve user history
+
+✅ END-TO-END FLOW:
+   User Input → Stress Detection → Response Generation → Logging → Return Message
+
+================================================================================

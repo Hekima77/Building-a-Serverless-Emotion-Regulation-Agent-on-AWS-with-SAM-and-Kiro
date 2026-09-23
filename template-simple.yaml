@@ -1,0 +1,69 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: 'Emotion Regulation Agent - Simplified'
+
+Globals:
+  Function:
+    Timeout: 60
+    Runtime: python3.11
+    MemorySize: 256
+
+Resources:
+  EmotionLogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: emotion-logs-dev
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: N
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+
+  EmotionAgentAPI:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: dev
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type'"
+        AllowOrigin: "'*'"
+
+  EmotionAgentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: emotion-agent-dev
+      InlineCode: |
+        import json
+        def emotion_handler(event, context):
+            return {
+                "statusCode": 200,
+                "body": json.dumps({
+                    "message": "Emotion agent is working!",
+                    "input": event
+                })
+            }
+      Handler: index.emotion_handler
+      Runtime: python3.11
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EmotionLogsTable
+      Events:
+        AnalyzeEmotion:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EmotionAgentAPI
+            Path: /emotion
+            Method: post
+
+Outputs:
+  ApiEndpoint:
+    Value: !Sub 'https://${EmotionAgentAPI}.execute-api.${AWS::Region}.amazonaws.com/dev'
+  DynamoDBTable:
+    Value: !Ref EmotionLogsTable

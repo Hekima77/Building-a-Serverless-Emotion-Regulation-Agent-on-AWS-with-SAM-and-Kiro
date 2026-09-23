@@ -1,0 +1,149 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  AWS_REGION: us-east-1
+  NODE_VERSION: 18
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: dist
+          path: dist/
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: dist
+          path: dist/
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate CloudFormation
+        run: |
+          aws cloudformation validate-template \
+            --template-body file://template.yaml
+
+      - name: Deploy to Dev
+        if: github.ref == 'refs/heads/develop'
+        uses: aws-actions/cloudformation-github-actions@v1
+        with:
+          args: deploy \
+            --template template.yaml \
+            --stack-name emotion-regulation-agent-dev \
+            --region ${{ env.AWS_REGION }} \
+            --parameter-overrides Environment=dev \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset
+
+      - name: Deploy to Production
+        if: github.ref == 'refs/heads/main'
+        uses: aws-actions/cloudformation-github-actions@v1
+        with:
+          args: deploy \
+            --template template.yaml \
+            --stack-name emotion-regulation-agent-prod \
+            --region ${{ env.AWS_REGION }} \
+            --parameter-overrides Environment=prod \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset
+
+      - name: Get Stack Outputs
+        run: |
+          aws cloudformation describe-stacks \
+            --stack-name emotion-regulation-agent-${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'Stacks[0].Outputs' \
+            --output table
+
+      - name: Notify Deployment
+        if: always()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const status = '${{ job.status }}';
+            const env = '${{ github.ref == "refs/heads/main" && "Production" || "Development" }}';
+            const message = `Deployment to ${env}: ${status.toUpperCase()}`;
+            console.log(message);
+
+  smoke-tests:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Invoke Emotion Agent Lambda
+        run: |
+          aws lambda invoke \
+            --function-name emotion-agent-${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }} \
+            --payload '{"text":"I am feeling anxious"}' \
+            response.json
+          cat response.json
+
+      - name: Check DynamoDB Health
+        run: |
+          aws dynamodb describe-table \
+            --table-name emotion-interaction-logs-${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }} \
+            --region ${{ env.AWS_REGION }}

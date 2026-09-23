@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # Local DynamoDB for testing
+  dynamodb:
+    image: amazon/dynamodb-local:latest
+    ports:
+      - "8000:8000"
+    environment:
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+      AWS_DEFAULT_REGION: us-east-1
+    volumes:
+      - dynamodb_data:/home/dynamodblocal
+    command: -jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/db
+
+  # Local S3 alternative (MinIO)
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    command: minio server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Emotion Agent API (for local development)
+  emotion-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+      DYNAMODB_TABLE_NAME: emotion-interaction-logs
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+      S3_BUCKET_NAME: emotion-animations
+      S3_ENDPOINT: http://minio:9000
+      LOG_LEVEL: debug
+    depends_on:
+      - dynamodb
+      - minio
+    volumes:
+      - ./dist:/app/dist
+      - ./src:/app/src
+
+volumes:
+  dynamodb_data:
+  minio_data:

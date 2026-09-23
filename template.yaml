@@ -1,0 +1,423 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Emotion Regulation Agent with AWS Bedrock, Lambda, Polly, S3, and DynamoDB
+
+# Global settings
+Globals:
+  Function:
+    Timeout: 120
+    MemorySize: 512
+    Runtime: nodejs18.x
+    Environment:
+      Variables:
+        AWS_REGION: !Ref AWS::Region
+        AWS_BEDROCK_MODEL: 'anthropic.claude-3-haiku-20240307-v1:0'
+        DYNAMODB_TABLE_NAME: !Ref EmotionInteractionTable
+        S3_BUCKET_NAME: !Ref AnimationBucket
+        LAMBDA_FUNCTION_NAME: emotion-breathing-routine
+        POLLY_VOICE_ID: Joanna
+        LOG_LEVEL: info
+        ENABLE_AUDIO: 'true'
+        ENABLE_ANIMATION: 'true'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment environment
+
+  AudioCacheTTL:
+    Type: Number
+    Default: 3600
+    Description: Audio file cache time in seconds
+
+  AnimationCacheTTL:
+    Type: Number
+    Default: 3600
+    Description: Animation file cache time in seconds
+
+Resources:
+  # ====================================
+  # DynamoDB Table for Interaction Logs
+  # ====================================
+  EmotionInteractionTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'emotion-interaction-logs-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+        - AttributeName: userId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: userId-timestamp-index
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: EmotionRegulationAgent
+
+  # ====================================
+  # S3 Bucket for Animations
+  # ====================================
+  AnimationBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'emotion-regulation-animations-${AWS::AccountId}-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - '*'
+            AllowedMethods:
+              - GET
+              - PUT
+              - POST
+            AllowedOrigins:
+              - '*'
+            MaxAgeSeconds: 3000
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldAnimations
+            Status: Enabled
+            ExpirationInDays: 30
+            NoncurrentVersionExpirationInDays: 7
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: EmotionRegulationAgent
+
+  AnimationBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AnimationBucket
+      PolicyText:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowLambdaAccess
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - 's3:GetObject'
+              - 's3:PutObject'
+              - 's3:DeleteObject'
+              - 's3:ListBucket'
+            Resource:
+              - !Sub '${AnimationBucket.Arn}'
+              - !Sub '${AnimationBucket.Arn}/*'
+
+  # ====================================
+  # S3 Bucket for Audio Files
+  # ====================================
+  AudioBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'emotion-regulation-audio-${AWS::AccountId}-${Environment}'
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldAudio
+            Status: Enabled
+            ExpirationInDays: 30
+            NoncurrentVersionExpirationInDays: 7
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: EmotionRegulationAgent
+
+  # ====================================
+  # Lambda Execution Role
+  # ====================================
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: EmotionAgentPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Bedrock permissions
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/*'
+
+              # DynamoDB permissions
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                Resource:
+                  - !GetAtt EmotionInteractionTable.Arn
+                  - !Sub '${EmotionInteractionTable.Arn}/index/*'
+
+              # S3 permissions
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt AnimationBucket.Arn
+                  - !Sub '${AnimationBucket.Arn}/*'
+                  - !GetAtt AudioBucket.Arn
+                  - !Sub '${AudioBucket.Arn}/*'
+
+              # Polly permissions
+              - Effect: Allow
+                Action:
+                  - polly:SynthesizeSpeech
+                Resource: '*'
+
+              # Lambda invocation permissions
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*'
+
+  # ====================================
+  # Lambda Functions
+  # ====================================
+
+  # Main Emotion Agent Function
+  EmotionAgentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'emotion-agent-${Environment}'
+      CodeUri: dist/
+      Handler: index.handleEmotionRequest
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 768
+      Environment:
+        Variables:
+          LAMBDA_FUNCTION_NAME: !Ref BreathingRoutineFunction
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref EmotionAPI
+            Path: /emotion
+            Method: post
+
+  # Breathing Routine Function
+  BreathingRoutineFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'emotion-breathing-routine-${Environment}'
+      CodeUri: dist/lambda/
+      Handler: breathing-routine-handler.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 256
+
+  # Audio Generation Function
+  AudioGenerationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'emotion-audio-generation-${Environment}'
+      CodeUri: dist/lambda/
+      Handler: polly-audio-handler.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 512
+      Environment:
+        Variables:
+          S3_BUCKET_NAME: !Ref AudioBucket
+
+  # Animation Generation Function
+  AnimationGenerationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'emotion-animation-generation-${Environment}'
+      CodeUri: dist/lambda/
+      Handler: animation-handler.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 512
+
+  # Logging Function
+  LoggingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'emotion-logging-${Environment}'
+      CodeUri: dist/lambda/
+      Handler: logging-handler.handleLogging
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 30
+      MemorySize: 256
+
+  # Analytics Function
+  AnalyticsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'emotion-analytics-${Environment}'
+      CodeUri: dist/lambda/
+      Handler: logging-handler.handleAnalytics
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 60
+      MemorySize: 512
+
+  # ====================================
+  # API Gateway
+  # ====================================
+  EmotionAPI:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Environment
+      Name: !Sub 'emotion-regulation-api-${Environment}'
+      TracingEnabled: true
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          LoggingLevel: INFO
+          DataTraceEnabled: true
+          MetricsEnabled: true
+
+  # ====================================
+  # CloudWatch Alarms
+  # ====================================
+  EmotionAgentErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'emotion-agent-errors-${Environment}'
+      AlarmDescription: Alert on emotion agent function errors
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref EmotionAgentFunction
+
+  DynamoDBThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'dynamodb-throttle-${Environment}'
+      AlarmDescription: Alert on DynamoDB throttling
+      MetricName: UserErrors
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: !Ref EmotionInteractionTable
+
+  # ====================================
+  # CloudWatch Log Groups
+  # ====================================
+  EmotionAgentLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/emotion-agent-${Environment}'
+      RetentionInDays: 30
+
+  AudioGenerationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/emotion-audio-${Environment}'
+      RetentionInDays: 30
+
+  AnimationGenerationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/emotion-animation-${Environment}'
+      RetentionInDays: 30
+
+# ====================================
+# Outputs
+# ====================================
+Outputs:
+  EmotionAPIEndpoint:
+    Description: Emotion Agent API endpoint
+    Value: !Sub 'https://${EmotionAPI}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/emotion'
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiEndpoint'
+
+  DynamoDBTableName:
+    Description: DynamoDB table for emotion logs
+    Value: !Ref EmotionInteractionTable
+    Export:
+      Name: !Sub '${AWS::StackName}-TableName'
+
+  AnimationBucketName:
+    Description: S3 bucket for animation files
+    Value: !Ref AnimationBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-AnimationBucket'
+
+  AudioBucketName:
+    Description: S3 bucket for audio files
+    Value: !Ref AudioBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-AudioBucket'
+
+  EmotionAgentFunctionArn:
+    Description: Main emotion agent Lambda function ARN
+    Value: !GetAtt EmotionAgentFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-EmotionAgentArn'
+
+  BreathingRoutineFunctionArn:
+    Description: Breathing routine Lambda function ARN
+    Value: !GetAtt BreathingRoutineFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-BreathingRoutineArn'
+
+  AnalyticsFunctionArn:
+    Description: Analytics Lambda function ARN
+    Value: !GetAtt AnalyticsFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-AnalyticsArn'

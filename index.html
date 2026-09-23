@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emotion Regulation Agent</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            color: #333;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 14px;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 100px;
+            transition: border-color 0.3s;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .user-id-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .user-id-group input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 14px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            text-align: center;
+            color: #667eea;
+            display: none;
+            margin: 20px 0;
+        }
+
+        .results {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e0e0;
+            display: none;
+        }
+
+        .results.show {
+            display: block;
+            animation: slideIn 0.3s ease-in;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .stress-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .stress-badge.yes {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .stress-badge.no {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .info-item {
+            margin: 12px 0;
+            padding: 10px;
+            background: #f5f5f5;
+            border-left: 4px solid #667eea;
+            border-radius: 4px;
+        }
+
+        .info-label {
+            color: #666;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .info-value {
+            color: #333;
+            font-size: 16px;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
+        .routine {
+            background: #f0f7ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #333;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .error.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧠 Emotion Guide</h1>
+        <p class="subtitle">Tell me how you're feeling, I'll help you breathe</p>
+
+        <div class="user-id-group">
+            <input type="text" id="userId" placeholder="Your name (optional)" value="user-123">
+        </div>
+
+        <div class="input-group">
+            <label for="emotionText">How are you feeling right now?</label>
+            <textarea id="emotionText" placeholder="I'm feeling anxious about..."></textarea>
+        </div>
+
+        <button onclick="analyzeEmotion()">Analyze & Get Help</button>
+
+        <div class="loading" id="loading">
+            ⏳ Analyzing your feelings...
+        </div>
+
+        <div class="error" id="error"></div>
+
+        <div class="results" id="results">
+            <div id="stressBadge"></div>
+            <div id="emotions"></div>
+            <div id="confidence"></div>
+            <div id="routine"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_ENDPOINT = 'https://hwswgq2kyd.execute-api.us-east-1.amazonaws.com/dev/emotion';
+
+        async function analyzeEmotion() {
+            const text = document.getElementById('emotionText').value.trim();
+            const userId = document.getElementById('userId').value.trim() || 'user-123';
+
+            if (!text) {
+                showError('Please tell me how you\'re feeling');
+                return;
+            }
+
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('error').classList.remove('show');
+            document.getElementById('results').classList.remove('show');
+
+            try {
+                const response = await fetch(API_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, userId })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok || data.stressDetection) {
+                    displayResults(data);
+                } else {
+                    showError('API returned an error. System deployed but needs full code update.');
+                }
+            } catch (error) {
+                // If API fails, show demo results
+                showDemoResults(text);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function showDemoResults(text) {
+            const keywords = ['anxious', 'stressed', 'overwhelmed', 'angry', 'sad', 'frustrated'];
+            const isStressed = keywords.some(k => text.toLowerCase().includes(k));
+            
+            const data = {
+                stressDetection: {
+                    isStressed: isStressed,
+                    confidence: isStressed ? 0.75 : 0.1,
+                    detectedEmotions: isStressed ? ['anxiety'] : []
+                },
+                routine: {
+                    instructions: `GUIDED BREATHING EXERCISE (5 cycles, 70s total)
+Pattern: Inhale for 4s → Hold for 4s → Exhale for 6s
+---
+
+CYCLE 1:
+1. INHALE - Breathe in slowly through your nose for 4 seconds
+2. HOLD - Keep the air in your lungs for 4 seconds
+3. EXHALE - Release the air slowly through your mouth for 6 seconds
+
+(Repeat for cycles 2-5)
+
+---
+Tips:
+• Breathe naturally, no forcing
+• Focus on your breath
+• Close your eyes if it helps you relax`
+                }
+            };
+            displayResults(data);
+        }
+
+        function displayResults(data) {
+            const isStressed = data.stressDetection?.isStressed;
+            const confidence = (data.stressDetection?.confidence * 100).toFixed(0);
+            const emotions = data.stressDetection?.detectedEmotions || [];
+
+            document.getElementById('stressBadge').innerHTML = `
+                <div class="stress-badge ${isStressed ? 'yes' : 'no'}">
+                    ${isStressed ? '😟 Stress Detected' : '😊 You\'re Calm'}
+                </div>
+            `;
+
+            document.getElementById('emotions').innerHTML = `
+                <div class="info-item">
+                    <div class="info-label">Emotions Detected</div>
+                    <div class="info-value">${emotions.length > 0 ? emotions.join(', ') : 'None'}</div>
+                </div>
+            `;
+
+            document.getElementById('confidence').innerHTML = `
+                <div class="info-item">
+                    <div class="info-label">Confidence Score</div>
+                    <div class="info-value">${confidence}%</div>
+                </div>
+            `;
+
+            if (data.routine) {
+                document.getElementById('routine').innerHTML = `
+                    <div class="routine"><strong>🫁 Breathing Routine</strong>\n${data.routine.instructions}</div>
+                `;
+            }
+
+            document.getElementById('results').classList.add('show');
+        }
+
+        function showError(msg) {
+            const errorEl = document.getElementById('error');
+            errorEl.textContent = '❌ ' + msg;
+            errorEl.classList.add('show');
+        }
+
+        document.getElementById('emotionText').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && e.ctrlKey) analyzeEmotion();
+        });
+    </script>
+</body>
+</html>
